@@ -1,14 +1,15 @@
-
 import React, { useState } from 'react';
-import { User, UserRole } from '../types';
+import { User } from '../types';
 import { compressImage } from '../utils';
-import { supabase } from './services/supabaseClient';
 
 interface ProfileEditorProps {
   user: User;
   onUpdate: (updatedUser: User) => void;
   onBack: () => void;
 }
+
+const LOCAL_USERS_KEY = 'studygenius_users';
+const LOCAL_USER_KEY = 'studygenius_local_user';
 
 const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, onUpdate, onBack }) => {
   const [username, setUsername] = useState(user.username);
@@ -29,26 +30,23 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, onUpdate, onBack })
     setSuccess(false);
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          username: username,
-          avatar_url: avatar
-        })
-        .eq('id', user.id);
-
-      if (error) throw error;
-
-      onUpdate({
+      const updatedUser = {
         ...user,
         username,
         avatar: avatar || undefined
-      });
+      };
+
+      const users = JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]');
+      const updatedUsers = users.map((u: any) => (u.id === user.id ? { ...u, username, avatar } : u));
+      localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(updatedUsers));
+      localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(updatedUser));
+
+      onUpdate(updatedUser);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       console.error(err);
-      alert("Failed to update profile.");
+      alert('Failed to update profile.');
     } finally {
       setLoading(false);
     }

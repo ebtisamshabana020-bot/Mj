@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
 import { Group, User, Question } from '../types';
-import { supabase } from './services/supabaseClient';
+
+const LOCAL_EXAMS_KEY = 'studygenius_exams';
 
 interface ExamCreatorProps {
   group: Group;
@@ -42,21 +43,20 @@ const ExamCreator: React.FC<ExamCreatorProps> = ({ group, user, onBack }) => {
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('exams')
-        .insert([{
-          group_id: group.id,
-          title: title,
-          questions: questions,
-          creator_id: user.id
-        }]);
-
-      if (error) throw error;
-      alert("🎉 تم نشر الاختبار بنجاح!");
+      const exams = JSON.parse(localStorage.getItem(LOCAL_EXAMS_KEY) || '[]');
+      exams.unshift({
+        id: `exam_${Date.now()}`,
+        groupId: group.id,
+        title: title,
+        questions: questions,
+        creatorId: user.id
+      });
+      localStorage.setItem(LOCAL_EXAMS_KEY, JSON.stringify(exams));
+      alert('🎉 تم نشر الاختبار بنجاح!');
       onBack();
     } catch (err: any) {
       console.error(err);
-      alert("فشل حفظ الاختبار. تأكد من وجود جدول exams في قاعدة البيانات.");
+      alert('فشل حفظ الاختبار محلياً.');
     } finally {
       setSaving(false);
     }
