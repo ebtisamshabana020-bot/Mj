@@ -1,81 +1,53 @@
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
-import { supabase } from './services/supabaseClient';
 
 interface AdminPanelProps {
   onBack: () => void;
 }
+
+const LOCAL_USERS_KEY = 'studygenius_users';
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchUsers();
+    const stored = JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]');
+    const mapped: User[] = stored.map((u: any) => ({
+      id: u.id,
+      username: u.username,
+      role: u.role as UserRole,
+      avatar: u.avatar,
+      isVerified: u.isVerified ?? true,
+      joinedGroups: []
+    }));
+    setUsers(mapped);
+    setLoading(false);
   }, []);
 
-  const fetchUsers = async () => {
-    try {
-      // Removed .order('created_at') to fix the "column does not exist" error
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*');
-      
-      if (error) throw error;
-
-      const mappedUsers: User[] = data.map((u: any) => ({
-        id: u.id,
-        username: u.username,
-        role: u.role as UserRole,
-        avatar: u.avatar_url,
-        isVerified: u.is_verified,
-        joinedGroups: []
-      }));
-      setUsers(mappedUsers);
-    } catch (err) {
-      console.error("Failed to fetch users", err);
-    } finally {
-      setLoading(false);
-    }
+  const saveUsers = (nextUsers: User[]) => {
+    setUsers(nextUsers);
+    const stored = JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]');
+    const merged = stored.map((u: any) => {
+      const updated = nextUsers.find(n => n.id === u.id);
+      return updated
+        ? { ...u, role: updated.role, isVerified: updated.isVerified, avatar: updated.avatar, username: updated.username }
+        : u;
+    });
+    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(merged));
   };
 
-  const toggleRole = async (userId: string, currentRole: UserRole) => {
+  const toggleRole = (userId: string, currentRole: UserRole) => {
     if (currentRole === UserRole.ADMIN) {
-        alert("Cannot change Admin role here.");
-        return;
+      alert('Cannot change Admin role here.');
+      return;
     }
-
     const newRole = currentRole === UserRole.TEACHER ? UserRole.USER : UserRole.TEACHER;
-
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ role: newRole })
-        .eq('id', userId);
-
-      if (error) throw error;
-
-      setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
-    } catch (err) {
-      alert("Failed to update user role.");
-      console.error(err);
-    }
+    saveUsers(users.map(u => (u.id === userId ? { ...u, role: newRole } : u)));
   };
 
-  const toggleVerification = async (userId: string, currentStatus: boolean) => {
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ is_verified: !currentStatus })
-        .eq('id', userId);
-
-      if (error) throw error;
-
-      setUsers(users.map(u => u.id === userId ? { ...u, isVerified: !currentStatus } : u));
-    } catch (err) {
-      alert("Failed to update verification status.");
-      console.error(err);
-    }
+  const toggleVerification = (userId: string, currentStatus: boolean) => {
+    saveUsers(users.map(u => (u.id === userId ? { ...u, isVerified: !currentStatus } : u)));
   };
 
   if (loading) return (
@@ -89,7 +61,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
       <div className="flex justify-between items-center">
         <div>
            <h2 className="text-3xl font-black text-slate-900">Super Admin Panel</h2>
-           <p className="text-slate-500 font-medium">Full access to identity and permissions</p>
+           <p className="text-slate-500 font-medium">Local demo user management</p>
         </div>
         <button onClick={onBack} className="text-slate-400 font-bold hover:text-red-500 px-4 py-2 hover:bg-red-50 rounded-xl transition-all">
           Exit Panel

@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import { ImageEditState } from '../types';
-import { editImageWithGemini } from './geminiService';
 import { fileToBase64 } from '../utils';
 
 interface ImageEditorProps {
@@ -43,11 +42,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ onBack }) => {
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      const resultBase64 = await editImageWithGemini(
-        state.originalImage,
-        mimeType,
-        state.prompt
-      );
+      const resultBase64 = state.originalImage;
 
       if (resultBase64) {
         setState((prev) => ({
@@ -91,7 +86,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ onBack }) => {
           <p className="text-slate-500">
             Upload a study chart, diagram, or photo and use AI to modify it.
             <br />
-            <span className="text-sm italic">Powered by Gemini 2.5 Flash Image</span>
+            <span className="text-sm italic">Local preview mode (no API keys needed)</span>
           </p>
         </div>
 
@@ -163,7 +158,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ onBack }) => {
               {state.isLoading ? (
                 <div className="flex flex-col items-center">
                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mb-2"></div>
-                   <p className="text-xs text-slate-500 animate-pulse">Consulting Gemini...</p>
+                   <p className="text-xs text-slate-500 animate-pulse">Generating local preview...</p>
                 </div>
               ) : state.generatedImage ? (
                 <img 

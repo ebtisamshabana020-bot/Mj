@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { AppView, User, UserRole, Group, Exam } from './types';
-import { supabase } from './components/services/supabaseClient';
 import Login from './components/Login';
 import { Register } from './components/Register';
 import Dashboard from './components/Dashboard';
@@ -11,6 +10,9 @@ import ExamCreator from './components/ExamCreator';
 import QuizTaker from './components/QuizTaker';
 import ProfileEditor from './components/ProfileEditor';
 import ImageEditor from './components/ImageEditor';
+
+const LOCAL_USER_KEY = 'studygenius_local_user';
+const LOCAL_EXAMS_KEY = 'studygenius_exams';
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.LOGIN);
@@ -22,27 +24,16 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session && session.user) {
-          const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
-          if (profile) {
-            setCurrentUser({
-              id: session.user.id,
-              username: profile.username,
-              role: profile.role as UserRole,
-              avatar: profile.avatar_url,
-              isVerified: profile.is_verified,
-              joinedGroups: []
-            });
-            setView(AppView.DASHBOARD);
-          }
+      const storedUser = localStorage.getItem(LOCAL_USER_KEY);
+      if (storedUser) {
+        try {
+          setCurrentUser(JSON.parse(storedUser));
+          setView(AppView.DASHBOARD);
+        } catch {
+          localStorage.removeItem(LOCAL_USER_KEY);
         }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
       }
+      setLoading(false);
     };
     checkSession();
   }, []);
@@ -54,27 +45,24 @@ const App: React.FC = () => {
   }, [view, selectedGroup]);
 
   const fetchExams = async (groupId: string) => {
-    const { data, error } = await supabase
-      .from('exams')
-      .select('*')
-      .eq('group_id', groupId)
-      .order('created_at', { ascending: false });
-    
-    if (!error && data) {
-      setGroupExams(data.map(d => ({
-        id: d.id,
-        groupId: d.group_id,
-        title: d.title,
-        questions: d.questions,
-        creatorId: d.creator_id
-      })));
+    try {
+      const localExams: Exam[] = JSON.parse(localStorage.getItem(LOCAL_EXAMS_KEY) || '[]');
+      setGroupExams(localExams.filter(exam => exam.groupId === groupId));
+    } catch {
+      setGroupExams([]);
     }
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    localStorage.removeItem(LOCAL_USER_KEY);
     setCurrentUser(null);
     setView(AppView.LOGIN);
+  };
+
+  const handleAuthSuccess = (u: User) => {
+    setCurrentUser(u);
+    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(u));
+    setView(AppView.DASHBOARD);
   };
 
   if (loading) {
@@ -90,8 +78,8 @@ const App: React.FC = () => {
 
   const renderView = () => {
     if (!currentUser) {
-      if (view === AppView.REGISTER) return <Register onRegister={(u) => { setCurrentUser(u); setView(AppView.DASHBOARD); }} onBack={() => setView(AppView.LOGIN)} />;
-      return <Login onLogin={(u) => { setCurrentUser(u); setView(AppView.DASHBOARD); }} onGoToRegister={() => setView(AppView.REGISTER)} />;
+      if (view === AppView.REGISTER) return <Register onRegister={handleAuthSuccess} onBack={() => setView(AppView.LOGIN)} />;
+      return <Login onLogin={handleAuthSuccess} onGoToRegister={() => setView(AppView.REGISTER)} />;
     }
 
     switch (view) {

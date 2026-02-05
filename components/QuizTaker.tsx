@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Exam, EncryptedMessage, User } from '../types';
 import { encryptMessage, decryptMessage } from '../utils';
-import { supabase } from './services/supabaseClient';
 
 interface QuizTakerProps {
   exam: Exam;
@@ -20,7 +19,7 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ exam, user, onBack }) => {
   const [msgInput, setMsgInput] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const isFallbackExam = exam.id.startsWith('fallback_');
+  const isFallbackExam = true;
 
   useEffect(() => {
     const handleInvis = () => {
@@ -39,79 +38,15 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ exam, user, onBack }) => {
   }, [messages]);
 
   useEffect(() => {
-    if (isFallbackExam) {
-      setMessages([{
-        id: 'welcome',
-        senderId: 'system',
-        senderName: 'النظام',
-        examId: exam.id,
-        encryptedContent: btoa(unescape(encodeURIComponent("مرحباً بك! الدردشة هنا تعمل بشكل محلي فقط."))),
-        timestamp: Date.now()
-      }]);
-      return;
-    }
-
-    const fetchMessages = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('messages')
-          .select('*')
-          .eq('exam_id', String(exam.id))
-          .order('created_at', { ascending: true });
-        
-        if (data && !error) {
-          const mapped: EncryptedMessage[] = data.map((m: any) => ({
-            id: m.id,
-            senderId: m.sender_id,
-            senderName: m.sender_name,
-            examId: m.exam_id,
-            encryptedContent: m.encrypted_content,
-            timestamp: new Date(m.created_at).getTime()
-          }));
-          setMessages(mapped);
-        }
-      } catch (err) {
-        console.error("Error fetching messages:", err);
-      }
-    };
-
-    fetchMessages();
-    
-    const channel = supabase
-      .channel(`chat_${exam.id}`)
-      .on('postgres_changes', 
-        { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'messages', 
-          filter: `exam_id=eq.${String(exam.id)}` 
-        }, 
-        (payload) => {
-          const m = payload.new;
-          const newMsg: EncryptedMessage = {
-            id: m.id,
-            senderId: m.sender_id,
-            senderName: m.sender_name,
-            examId: m.exam_id,
-            encryptedContent: m.encrypted_content,
-            timestamp: new Date(m.created_at).getTime()
-          };
-          
-          setMessages(prev => {
-            // Avoid adding the same message if optimistic update already added it
-            if (prev.find(msg => msg.id === newMsg.id || (msg.senderId === newMsg.senderId && msg.timestamp > Date.now() - 5000 && msg.encryptedContent === newMsg.encryptedContent))) {
-              return prev;
-            }
-            return [...prev, newMsg];
-          });
-        }
-      )
-      .subscribe();
-
-    return () => { 
-      supabase.removeChannel(channel); 
-    };
-  }, [exam.id, isFallbackExam]);
+    setMessages([{
+      id: 'welcome',
+      senderId: 'system',
+      senderName: 'النظام',
+      examId: exam.id,
+      encryptedContent: btoa(unescape(encodeURIComponent('مرحباً بك! الدردشة تعمل محلياً بدون سيرفر.'))),
+      timestamp: Date.now()
+    }]);
+  }, [exam.id]);
 
   const handleSendChat = async () => {
     if (!msgInput.trim()) return;
@@ -132,23 +67,6 @@ const QuizTaker: React.FC<QuizTakerProps> = ({ exam, user, onBack }) => {
     
     setMessages(prev => [...prev, optimisticMsg]);
 
-    if (isFallbackExam) return;
-
-    try {
-      const { error } = await supabase.from('messages').insert([{
-        exam_id: String(exam.id),
-        sender_id: user.id,
-        sender_name: user.username,
-        encrypted_content: encrypted
-      }]);
-
-      if (error) throw error;
-    } catch (err) {
-      console.error("فشل إرسال الرسالة:", err);
-      // Optional: Remove optimistic message if insert fails
-      setMessages(prev => prev.filter(m => m.id !== tempId));
-      alert("⚠️ تعذر إرسال الرسالة للسيرفر.");
-    }
   };
 
   if (isDone) {
