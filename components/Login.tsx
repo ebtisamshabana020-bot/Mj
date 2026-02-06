@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { supabase } from './services/supabaseClient';
 
@@ -14,20 +14,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, onGoToRegister }) => {
   const [loading, setLoading] = useState(false);
 
   // Auto-fill saved credentials if available
-  useEffect(() => {
-    const savedDemo = localStorage.getItem('studygenius_demo_creds');
-    if (savedDemo) {
-      try {
-        const { username: savedName, password: savedPass } = JSON.parse(savedDemo);
-        if (savedName && savedPass) {
-          setUsername(savedName);
-          setPassword(savedPass);
-        }
-      } catch (e) {
-        localStorage.removeItem('studygenius_demo_creds');
-      }
-    }
-  }, []);
 
   const getSyntheticEmail = (user: string) => {
     const cleanName = user.trim().replace(/\s+/g, '_').toLowerCase();

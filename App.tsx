@@ -10,7 +10,6 @@ import AdminPanel from './components/AdminPanel';
 import ExamCreator from './components/ExamCreator';
 import QuizTaker from './components/QuizTaker';
 import ProfileEditor from './components/ProfileEditor';
-import ImageEditor from './components/ImageEditor';
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.LOGIN);
@@ -147,8 +146,6 @@ const App: React.FC = () => {
         return <AdminPanel onBack={() => setView(AppView.DASHBOARD)} />;
       case AppView.PROFILE:
         return <ProfileEditor user={currentUser} onUpdate={setCurrentUser} onBack={() => setView(AppView.DASHBOARD)} />;
-      case AppView.IMAGE_EDITOR:
-        return <ImageEditor onBack={() => setView(AppView.DASHBOARD)} />;
       default:
         return <Dashboard user={currentUser} onNavigate={setView} onOpenGroup={() => {}} />;
     }

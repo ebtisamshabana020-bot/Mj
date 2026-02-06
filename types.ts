@@ -50,14 +50,6 @@ export interface EncryptedMessage {
   timestamp: number;
 }
 
-// Added ImageEditState interface to fix "Module has no exported member 'ImageEditState'" error in ImageEditor.tsx
-export interface ImageEditState {
-  originalImage: string | null;
-  generatedImage: string | null;
-  prompt: string;
-  isLoading: boolean;
-  error: string | null;
-}
 
 export enum AppView {
   LOGIN = 'LOGIN',
@@ -68,7 +60,5 @@ export enum AppView {
   EXAM_TAKER = 'EXAM_TAKER',
   EXAM_CREATOR = 'EXAM_CREATOR',
   ADMIN_PANEL = 'ADMIN_PANEL',
-  PROFILE = 'PROFILE',
-  // Added IMAGE_EDITOR to AppView enum to fix "Property 'IMAGE_EDITOR' does not exist on type 'typeof AppView'" error in Dashboard.tsx
-  IMAGE_EDITOR = 'IMAGE_EDITOR'
+  PROFILE = 'PROFILE'
 }
