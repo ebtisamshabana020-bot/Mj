@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Group, User, UserRole } from '../types';
-import { hashString } from '../utils';
-import { supabase } from './services/supabaseClient';
+import { hashString, isLegacySha256HashFormat, verifyStringHash } from '../utils';
+
+const LOCAL_GROUPS_KEY = 'studygenius_groups';
 
 interface GroupsListProps {
   user: User;
@@ -29,26 +30,10 @@ const GroupsList: React.FC<GroupsListProps> = ({ user, onBack, onJoinGroup }) =>
 
   const fetchGroups = async () => {
     try {
-      const { data, error } = await supabase
-        .from('groups')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      const serverGroups: Group[] = data.map((g: any) => ({
-        id: g.id,
-        name: g.name,
-        description: g.description,
-        creatorId: g.creator_id,
-        passwordHash: g.password_hash,
-        imageUrl: g.image_url,
-        membersCount: 0 
-      }));
-
-      setGroups(serverGroups);
+      const localGroups = JSON.parse(localStorage.getItem(LOCAL_GROUPS_KEY) || '[]');
+      setGroups(localGroups);
     } catch (err) {
-      console.error("Error fetching groups:", err);
+      console.error('Error fetching groups:', err);
     } finally {
       setLoading(false);
     }
@@ -60,34 +45,23 @@ const GroupsList: React.FC<GroupsListProps> = ({ user, onBack, onJoinGroup }) =>
 
     try {
       const passHash = await hashString(pass);
-      const { data, error } = await supabase
-        .from('groups')
-        .insert([{
-          name,
-          description: desc,
-          password_hash: passHash,
-          creator_id: user.id
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-
       const newGroup: Group = {
-        id: data.id,
-        name: data.name,
-        description: data.description,
-        creatorId: data.creator_id,
-        passwordHash: data.password_hash,
-        imageUrl: data.image_url,
+        id: `group_${Date.now()}`,
+        name,
+        description: desc,
+        creatorId: user.id,
+        passwordHash: passHash,
+        imageUrl: '',
         membersCount: 1
       };
 
-      setGroups([newGroup, ...groups]);
+      const updatedGroups = [newGroup, ...groups];
+      setGroups(updatedGroups);
+      localStorage.setItem(LOCAL_GROUPS_KEY, JSON.stringify(updatedGroups));
       setShowCreate(false);
       setName(''); setDesc(''); setPass('');
     } catch (err: any) {
-      alert("فشل إنشاء المجموعة: " + err.message);
+      alert('فشل إنشاء المجموعة: ' + err.message);
     }
   };
 
@@ -105,12 +79,19 @@ const GroupsList: React.FC<GroupsListProps> = ({ user, onBack, onJoinGroup }) =>
     }
     
     if (!inputPass) return;
-    const inputHash = await hashString(inputPass);
-    
-    if (inputHash === group.passwordHash) {
+    const isValidPassword = await verifyStringHash(inputPass, group.passwordHash);
+
+    if (isValidPassword) {
+      if (isLegacySha256HashFormat(group.passwordHash)) {
+        const upgradedHash = await hashString(inputPass);
+        const upgradedGroups = groups.map((g) => g.id === group.id ? { ...g, passwordHash: upgradedHash } : g);
+        setGroups(upgradedGroups);
+        localStorage.setItem(LOCAL_GROUPS_KEY, JSON.stringify(upgradedGroups));
+      }
+
       onJoinGroup(group, false);
     } else {
-      alert("كلمة المرor غير صحيحة.");
+      alert("كلمة المرور غير صحيحة.");
     }
   };
 
