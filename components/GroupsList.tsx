@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Group, User, UserRole } from '../types';
 import { hashString, isLegacySha256HashFormat, verifyStringHash } from '../utils';
+import { hashString } from '../utils';
 
 const LOCAL_GROUPS_KEY = 'studygenius_groups';
 
