@@ -1,8 +1,6 @@
-
 import React, { useState } from 'react';
 import { Group, User, Question } from '../types';
-
-const LOCAL_EXAMS_KEY = 'studygenius_exams';
+import { supabase } from './supabaseClient';
 
 interface ExamCreatorProps {
   group: Group;
@@ -19,18 +17,18 @@ const ExamCreator: React.FC<ExamCreatorProps> = ({ group, user, onBack }) => {
   const [saving, setSaving] = useState(false);
 
   const addQuestion = () => {
-    if (!newQText.trim()) { alert("يرجى كتابة نص السؤال أولاً."); return; }
+    if (!newQText.trim()) { alert('يرجى كتابة نص السؤال أولاً.'); return; }
     const filledOptions = options.map(o => o.trim()).filter(o => o !== '');
-    if (filledOptions.length < 2) { alert("يرجى كتابة خيارين على الأقل للسؤال."); return; }
-    
+    if (filledOptions.length < 2) { alert('يرجى كتابة خيارين على الأقل للسؤال.'); return; }
+
     const q: Question = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       text: newQText,
       options: filledOptions,
       correctAnswer: correct,
       type: 'MCQ'
     };
-    
+
     setQuestions([...questions, q]);
     setNewQText('');
     setOptions(['', '', '', '']);
@@ -38,25 +36,23 @@ const ExamCreator: React.FC<ExamCreatorProps> = ({ group, user, onBack }) => {
   };
 
   const handleSave = async () => {
-    if (!title.trim()) { alert("يرجى إدخال عنوان للاختبار."); return; }
-    if (questions.length === 0) { alert("أضف سؤالاً واحداً على الأقل."); return; }
+    if (!title.trim()) { alert('يرجى إدخال عنوان للاختبار.'); return; }
+    if (questions.length === 0) { alert('أضف سؤالاً واحداً على الأقل.'); return; }
 
     setSaving(true);
     try {
-      const exams = JSON.parse(localStorage.getItem(LOCAL_EXAMS_KEY) || '[]');
-      exams.unshift({
-        id: `exam_${Date.now()}`,
-        groupId: group.id,
-        title: title,
-        questions: questions,
-        creatorId: user.id
+      const { error } = await supabase.from('exams').insert({
+        group_id: group.id,
+        title: title.trim(),
+        questions,
+        creator_id: user.id
       });
-      localStorage.setItem(LOCAL_EXAMS_KEY, JSON.stringify(exams));
+
+      if (error) throw error;
       alert('🎉 تم نشر الاختبار بنجاح!');
       onBack();
     } catch (err: any) {
-      console.error(err);
-      alert('فشل حفظ الاختبار محلياً.');
+      alert(err?.message || 'فشل حفظ الاختبار على السيرفر.');
     } finally {
       setSaving(false);
     }
@@ -71,28 +67,28 @@ const ExamCreator: React.FC<ExamCreatorProps> = ({ group, user, onBack }) => {
 
       <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
         <label className="block text-sm font-black text-slate-700 mb-3">عنوان الاختبار</label>
-        <input 
-          type="text" 
-          value={title} 
+        <input
+          type="text"
+          value={title}
           onChange={(e) => setTitle(e.target.value)}
-          className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold" 
+          className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
           placeholder="مثلاً: اختبار الرياضيات - الوحدة الأولى"
         />
       </div>
 
       <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
         <h3 className="font-black text-xl mb-6">📝 إضافة سؤال</h3>
-        <textarea 
+        <textarea
           value={newQText}
           onChange={(e) => setNewQText(e.target.value)}
-          className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 h-28 font-bold mb-6" 
+          className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 h-28 font-bold mb-6"
           placeholder="اكتب السؤال هنا..."
         />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {options.map((opt, i) => (
             <div key={i} className={`flex gap-3 items-center p-3 rounded-2xl border-2 ${correct === i ? 'border-emerald-500 bg-emerald-50' : 'border-slate-50 bg-slate-50'}`}>
               <input type="radio" checked={correct === i} onChange={() => setCorrect(i)} className="w-5 h-5 accent-emerald-600" name="correct" />
-              <input type="text" value={opt} onChange={(e) => { const n = [...options]; n[i] = e.target.value; setOptions(n); }} className="flex-1 bg-transparent outline-none font-bold text-sm" placeholder={`خيار ${i+1}`} />
+              <input type="text" value={opt} onChange={(e) => { const n = [...options]; n[i] = e.target.value; setOptions(n); }} className="flex-1 bg-transparent outline-none font-bold text-sm" placeholder={`خيار ${i + 1}`} />
             </div>
           ))}
         </div>
@@ -102,16 +98,16 @@ const ExamCreator: React.FC<ExamCreatorProps> = ({ group, user, onBack }) => {
       <div className="space-y-4">
         <h3 className="font-black text-lg">الأسئلة الحالية ({questions.length})</h3>
         {questions.map((q, idx) => (
-          <div key={idx} className="bg-white p-5 rounded-2xl border border-slate-200 flex justify-between items-center flex-row-reverse">
+          <div key={q.id} className="bg-white p-5 rounded-2xl border border-slate-200 flex justify-between items-center flex-row-reverse">
             <span className="font-bold">{q.text}</span>
             <button onClick={() => setQuestions(questions.filter((_, i) => i !== idx))} className="text-red-500 font-bold hover:underline">حذف</button>
           </div>
         ))}
       </div>
 
-      <button 
-        onClick={handleSave} 
-        disabled={saving || questions.length === 0} 
+      <button
+        onClick={handleSave}
+        disabled={saving || questions.length === 0}
         className={`w-full py-5 rounded-[2rem] font-black text-xl shadow-2xl transition-all ${saving ? 'bg-slate-300' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
       >
         {saving ? 'جاري الحفظ...' : '🚀 حفظ ونشر الاختبار'}

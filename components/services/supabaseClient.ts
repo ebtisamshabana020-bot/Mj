@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Demo placeholder client (kept only for compatibility with any untouched imports).
-const supabaseUrl = 'https://example.supabase.co';
-const supabaseKey = 'demo-anon-key';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase env vars: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are required.');
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
