@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Group, User, UserRole } from '../types';
+import { hashString, isLegacySha256HashFormat, verifyStringHash } from '../utils';
 import { hashString } from '../utils';
 
 const LOCAL_GROUPS_KEY = 'studygenius_groups';
@@ -79,12 +80,19 @@ const GroupsList: React.FC<GroupsListProps> = ({ user, onBack, onJoinGroup }) =>
     }
     
     if (!inputPass) return;
-    const inputHash = await hashString(inputPass);
-    
-    if (inputHash === group.passwordHash) {
+    const isValidPassword = await verifyStringHash(inputPass, group.passwordHash);
+
+    if (isValidPassword) {
+      if (isLegacySha256HashFormat(group.passwordHash)) {
+        const upgradedHash = await hashString(inputPass);
+        const upgradedGroups = groups.map((g) => g.id === group.id ? { ...g, passwordHash: upgradedHash } : g);
+        setGroups(upgradedGroups);
+        localStorage.setItem(LOCAL_GROUPS_KEY, JSON.stringify(upgradedGroups));
+      }
+
       onJoinGroup(group, false);
     } else {
-      alert("كلمة المرor غير صحيحة.");
+      alert("كلمة المرور غير صحيحة.");
     }
   };
 
