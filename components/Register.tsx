@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { compressImage } from '../utils';
+import { supabase } from './supabaseClient';
 
 interface RegisterProps {
   onRegister: (user: User) => void;
   onBack: () => void;
 }
 
-const LOCAL_USERS_KEY = 'studygenius_users';
+const usernameToEmail = (username: string): string => {
+  const normalized = username.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+  return `${normalized}@studygenius.app`;
+};
 
 export const Register: React.FC<RegisterProps> = ({ onRegister, onBack }) => {
   const [username, setUsername] = useState('');
@@ -16,6 +20,7 @@ export const Register: React.FC<RegisterProps> = ({ onRegister, onBack }) => {
   const [avatar, setAvatar] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [infoMsg, setInfoMsg] = useState('');
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -26,40 +31,63 @@ export const Register: React.FC<RegisterProps> = ({ onRegister, onBack }) => {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password) return;
+    if (!username.trim() || !password) return;
 
-    if (password.length < 3) {
-      setErrorMsg('Password must be at least 3 characters.');
+    if (password.length < 6) {
+      setErrorMsg('Password must be at least 6 characters.');
       return;
     }
 
     setLoading(true);
     setErrorMsg('');
+    setInfoMsg('');
 
-    const users = JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]');
-    const exists = users.find((u: any) => u.username === username);
-    if (exists) {
-      setErrorMsg('Username already exists. Please choose another one.');
+    try {
+      const email = usernameToEmail(username);
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username: username.trim()
+          }
+        }
+      });
+
+      if (error) throw error;
+
+      if (!data.user) {
+        throw new Error('تعذر إنشاء الحساب.');
+      }
+
+      const requestedRole = role === UserRole.ADMIN ? UserRole.USER : role;
+      const { error: profileError } = await supabase.from('profiles').upsert({
+        id: data.user.id,
+        username: username.trim(),
+        role: requestedRole,
+        is_verified: true,
+        avatar_url: avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(username.trim())}`
+      });
+
+      if (profileError) throw profileError;
+
+      if (data.session) {
+        onRegister({
+          id: data.user.id,
+          username: username.trim(),
+          role: requestedRole,
+          avatar: avatar || undefined,
+          isVerified: true,
+          joinedGroups: []
+        });
+      } else {
+        setInfoMsg('تم إنشاء الحساب. قم بتأكيد البريد إن كان مفعلاً ثم سجّل الدخول.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Registration failed.');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const id = `user_${Date.now()}`;
-    const stored = { id, username, password, role, avatar };
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify([stored, ...users]));
-    localStorage.setItem('studygenius_demo_creds', JSON.stringify({ username, password }));
-
-    const newUser: User = {
-      id,
-      username,
-      role,
-      avatar: avatar || undefined,
-      isVerified: true,
-      joinedGroups: []
-    };
-
-    onRegister(newUser);
-    setLoading(false);
   };
 
   return (
@@ -67,7 +95,7 @@ export const Register: React.FC<RegisterProps> = ({ onRegister, onBack }) => {
       <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-100">
         <div className="text-center mb-8">
           <h2 className="text-3xl font-black text-slate-900 tracking-tight">Create Identity</h2>
-          <p className="text-slate-400 mt-2 font-medium">Local registration without backend</p>
+          <p className="text-slate-400 mt-2 font-medium">Server-backed registration via Supabase</p>
         </div>
 
         <form onSubmit={handleSignup} className="space-y-6">
@@ -93,6 +121,7 @@ export const Register: React.FC<RegisterProps> = ({ onRegister, onBack }) => {
           </select>
 
           {errorMsg && <div className="p-3 rounded-xl bg-red-50 text-red-600 text-sm font-bold">{errorMsg}</div>}
+          {infoMsg && <div className="p-3 rounded-xl bg-emerald-50 text-emerald-700 text-sm font-bold">{infoMsg}</div>}
 
           <button type="submit" disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-bold disabled:opacity-50">
             {loading ? 'Creating account...' : 'Create Account'}
