@@ -1,17 +1,38 @@
-# StudyGenius (Local Demo Mode)
+# StudyGenius (Supabase Server Mode)
 
-This project now runs without any environment variables.
+هذا المشروع يعمل بنمط **Server-backed only** عبر Supabase.
 
-## Run locally
+## المتطلبات
 
-1. Install dependencies:
-   `npm install`
-2. Start development server:
-   `npm run dev`
+أنشئ ملف `.env` في جذر المشروع:
 
-## Notes
+```bash
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+```
 
-- Authentication, groups, exams, and chat are stored in browser localStorage for demo purposes.
-- No backend setup is required to preview the app UI flow.
+## التشغيل
 
-- Password hashing supports Argon2 if runtime hooks are provided (`globalThis.__argon2Hash` and `globalThis.__argon2Verify`); otherwise it falls back to PBKDF2 in-browser.
+```bash
+npm install
+npm run dev
+```
+
+## ملاحظات الإنتاج
+
+- المصادقة تتم عبر `supabase.auth` فقط.
+- لا يوجد تخزين Demo عبر `localStorage` لتدفقات الحسابات/المجموعات/الاختبارات.
+- يجب تفعيل RLS على الجداول: `profiles`, `groups`, `exams`, `messages`.
+- يفضّل التحقق من كلمات مرور الانضمام للمجموعات عبر Edge Function باستخدام **Argon2id**.
+
+## Troubleshooting: `infinite recursion detected in policy for relation "profiles"`
+
+هذا الخطأ يظهر عند وجود policy على جدول `profiles` تقوم بقراءة `profiles` نفسها داخل `USING` أو `WITH CHECK`.
+
+نفّذ السكربت التالي في Supabase SQL Editor لإصلاحها:
+
+```sql
+-- from repo root
+-- sql/fix_profiles_policy_recursion.sql
+```
+
