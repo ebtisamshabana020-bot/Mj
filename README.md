@@ -1,17 +1,25 @@
-# StudyGenius (Local Demo Mode)
+# StudyGenius (Firebase Server Mode)
 
-This project now runs without any environment variables.
+هذا المشروع يعمل بنمط **Server-backed only** عبر Firebase (Authentication + Firestore).
 
-## Run locally
+## Environment Variables
 
-1. Install dependencies:
-   `npm install`
-2. Start development server:
-   `npm run dev`
+أنشئ ملف `.env` في جذر المشروع:
 
-## Notes
+```bash
+VITE_FIREBASE_API_KEY=AIzaSyAIorPDHQwVC2t0l7cSCjfo1CUj5huqas0
+VITE_FIREBASE_PROJECT_ID=chatapp-b5bda
+```
 
-- Authentication, groups, exams, and chat are stored in browser localStorage for demo purposes.
-- No backend setup is required to preview the app UI flow.
+## التشغيل
 
-- Password hashing supports Argon2 if runtime hooks are provided (`globalThis.__argon2Hash` and `globalThis.__argon2Verify`); otherwise it falls back to PBKDF2 in-browser.
+```bash
+npm install
+npm run dev
+```
+
+## ملاحظات
+
+- المصادقة عبر Firebase Auth (REST API).
+- البيانات الأساسية (`profiles`, `groups`, `exams`) عبر Firestore.
+- لا يوجد مسار demo محلي للبيانات.

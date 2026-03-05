@@ -1,6 +1,5 @@
-
-import React, { useState, useEffect } from 'react';
-import { AppView, User, UserRole, Group, Exam } from './types';
+import React, { useEffect, useState } from 'react';
+import { AppView, Exam, Group, User, UserRole } from './types';
 import Login from './components/Login';
 import { Register } from './components/Register';
 import Dashboard from './components/Dashboard';
@@ -9,10 +8,25 @@ import AdminPanel from './components/AdminPanel';
 import ExamCreator from './components/ExamCreator';
 import QuizTaker from './components/QuizTaker';
 import ProfileEditor from './components/ProfileEditor';
-import ImageEditor from './components/ImageEditor';
+import { getCurrentAuthUser, getProfile, listExamsByGroup, signOut } from './components/services/firebaseClient';
 
-const LOCAL_USER_KEY = 'studygenius_local_user';
-const LOCAL_EXAMS_KEY = 'studygenius_exams';
+const mapProfileToUser = (profile: any): User => ({
+  id: profile.id,
+  username: profile.username,
+  role: (profile.role as UserRole) ?? UserRole.USER,
+  avatar: profile.avatar_url ?? undefined,
+  isVerified: Boolean(profile.is_verified),
+  joinedGroups: []
+});
+
+const mapExam = (exam: any): Exam => ({
+  id: exam.id,
+  groupId: exam.group_id,
+  title: exam.title,
+  description: exam.description ?? undefined,
+  questions: exam.questions ?? [],
+  creatorId: exam.creator_id
+});
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.LOGIN);
@@ -23,45 +37,48 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const checkSession = async () => {
-      const storedUser = localStorage.getItem(LOCAL_USER_KEY);
-      if (storedUser) {
-        try {
-          setCurrentUser(JSON.parse(storedUser));
+    const bootstrap = async () => {
+      try {
+        const authUser = await getCurrentAuthUser();
+        if (authUser?.uid) {
+          const profile = await getProfile(authUser.uid, authUser.idToken);
+          if (!profile) throw new Error('تعذر تحميل الملف الشخصي.');
+          setCurrentUser(mapProfileToUser(profile));
           setView(AppView.DASHBOARD);
-        } catch {
-          localStorage.removeItem(LOCAL_USER_KEY);
         }
+      } catch (error) {
+        console.error('Session bootstrap failed', error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
-    checkSession();
+
+    bootstrap();
   }, []);
 
   useEffect(() => {
     if (view === AppView.GROUP_DETAIL && selectedGroup) {
-      fetchExams(selectedGroup.id);
+      const loadExams = async () => {
+        try {
+          const exams = await listExamsByGroup(selectedGroup.id);
+          setGroupExams(exams.map(mapExam));
+        } catch {
+          alert('تعذر تحميل الاختبارات.');
+          setGroupExams([]);
+        }
+      };
+      loadExams();
     }
   }, [view, selectedGroup]);
 
-  const fetchExams = async (groupId: string) => {
-    try {
-      const localExams: Exam[] = JSON.parse(localStorage.getItem(LOCAL_EXAMS_KEY) || '[]');
-      setGroupExams(localExams.filter(exam => exam.groupId === groupId));
-    } catch {
-      setGroupExams([]);
-    }
-  };
-
   const handleLogout = async () => {
-    localStorage.removeItem(LOCAL_USER_KEY);
+    await signOut();
     setCurrentUser(null);
     setView(AppView.LOGIN);
   };
 
-  const handleAuthSuccess = (u: User) => {
-    setCurrentUser(u);
-    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(u));
+  const handleAuthSuccess = (user: User) => {
+    setCurrentUser(user);
     setView(AppView.DASHBOARD);
   };
 
@@ -69,7 +86,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto" />
           <p className="mt-4 text-slate-500 font-bold">جاري تحميل المنصة...</p>
         </div>
       </div>
@@ -78,7 +95,9 @@ const App: React.FC = () => {
 
   const renderView = () => {
     if (!currentUser) {
-      if (view === AppView.REGISTER) return <Register onRegister={handleAuthSuccess} onBack={() => setView(AppView.LOGIN)} />;
+      if (view === AppView.REGISTER) {
+        return <Register onRegister={handleAuthSuccess} onBack={() => setView(AppView.LOGIN)} />;
+      }
       return <Login onLogin={handleAuthSuccess} onGoToRegister={() => setView(AppView.REGISTER)} />;
     }
 
@@ -87,81 +106,68 @@ const App: React.FC = () => {
         return <Dashboard user={currentUser} onNavigate={setView} onOpenGroup={() => {}} />;
       case AppView.GROUPS:
         return (
-          <GroupsList 
-            user={currentUser} 
-            onBack={() => setView(AppView.DASHBOARD)} 
-            onJoinGroup={(g, manageMode) => {
-              setSelectedGroup(g);
-              if (manageMode) setView(AppView.EXAM_CREATOR);
-              else setView(AppView.GROUP_DETAIL);
-            }} 
+          <GroupsList
+            user={currentUser}
+            onBack={() => setView(AppView.DASHBOARD)}
+            onJoinGroup={(group, manageMode) => {
+              setSelectedGroup(group);
+              setView(manageMode ? AppView.EXAM_CREATOR : AppView.GROUP_DETAIL);
+            }}
           />
         );
       case AppView.GROUP_DETAIL:
         return (
           <div className="max-w-4xl mx-auto space-y-6 text-right">
-             <div className="flex justify-between items-center flex-row-reverse">
-                <h2 className="text-3xl font-black">{selectedGroup?.name}</h2>
-                <button onClick={() => setView(AppView.GROUPS)} className="px-4 py-2 bg-white rounded-xl shadow-sm border border-slate-100 font-bold">عودة للمجموعات</button>
-             </div>
-             <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                <div className="flex justify-between items-center mb-6 flex-row-reverse">
-                  <h3 className="text-xl font-bold">الاختبارات المنشورة</h3>
-                  {(currentUser.role !== UserRole.USER) && (
-                    <button onClick={() => setView(AppView.EXAM_CREATOR)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold">+ إضافة اختبار</button>
-                  )}
-                </div>
-                {groupExams.length > 0 ? (
-                  <div className="grid gap-4">
-                    {groupExams.map(exam => (
-                      <div key={exam.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center flex-row-reverse border border-slate-100">
-                        <span className="font-bold">{exam.title}</span>
-                        <button 
-                          onClick={() => { setActiveExam(exam); setView(AppView.EXAM_TAKER); }}
-                          className="bg-indigo-600 text-white px-6 py-2 rounded-xl text-sm font-bold"
-                        >دخول الاختبار</button>
+            <div className="flex justify-between items-center flex-row-reverse">
+              <h2 className="text-3xl font-black">{selectedGroup?.name}</h2>
+              <button onClick={() => setView(AppView.GROUPS)} className="px-4 py-2 bg-white rounded-xl shadow-sm border border-slate-100 font-bold">عودة للمجموعات</button>
+            </div>
+            <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+              <div className="flex justify-between items-center mb-6 flex-row-reverse">
+                <h3 className="text-xl font-bold">الاختبارات المنشورة</h3>
+                {currentUser.role !== UserRole.USER && (
+                  <button onClick={() => setView(AppView.EXAM_CREATOR)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold">+ إضافة اختبار</button>
+                )}
+              </div>
+              {groupExams.length > 0 ? (
+                <div className="grid gap-4">
+                  {groupExams.map((exam) => (
+                    <div key={exam.id} className="p-4 rounded-xl border border-slate-100 flex justify-between items-center">
+                      <div>
+                        <h4 className="font-bold">{exam.title}</h4>
+                        {exam.description && <p className="text-sm text-slate-500">{exam.description}</p>}
                       </div>
-                    ))}
-                  </div>
-                ) : <p className="text-slate-400 py-10">لا توجد اختبارات متاحة حالياً.</p>}
-             </div>
+                      <button onClick={() => { setActiveExam(exam); setView(AppView.EXAM_TAKER); }} className="px-4 py-2 bg-slate-900 text-white rounded-lg font-bold">بدء</button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-400 text-center py-8">لا توجد اختبارات منشورة بعد.</p>
+              )}
+            </div>
           </div>
         );
-      case AppView.EXAM_CREATOR:
-        return selectedGroup ? <ExamCreator group={selectedGroup} user={currentUser} onBack={() => setView(AppView.GROUP_DETAIL)} /> : null;
       case AppView.EXAM_TAKER:
         return activeExam ? <QuizTaker exam={activeExam} user={currentUser} onBack={() => setView(AppView.GROUP_DETAIL)} /> : null;
+      case AppView.EXAM_CREATOR:
+        return selectedGroup ? <ExamCreator group={selectedGroup} user={currentUser} onBack={() => setView(AppView.GROUP_DETAIL)} /> : null;
       case AppView.ADMIN_PANEL:
         return <AdminPanel onBack={() => setView(AppView.DASHBOARD)} />;
       case AppView.PROFILE:
         return <ProfileEditor user={currentUser} onUpdate={setCurrentUser} onBack={() => setView(AppView.DASHBOARD)} />;
-      case AppView.IMAGE_EDITOR:
-        return <ImageEditor onBack={() => setView(AppView.DASHBOARD)} />;
       default:
-        return <Dashboard user={currentUser} onNavigate={setView} onOpenGroup={() => {}} />;
+        return null;
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <nav className="bg-white border-b border-slate-100 px-6 py-4 flex justify-between items-center sticky top-0 z-40 flex-row-reverse">
-        <div className="flex items-center gap-4 flex-row-reverse">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black text-xl">S</div>
-          <span className="text-xl font-black text-slate-900 hidden sm:inline">StudyGenius</span>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 p-4 md:p-8">
+      {currentUser && (
+        <div className="max-w-7xl mx-auto mb-4 flex justify-end">
+          <button onClick={handleLogout} className="px-4 py-2 bg-white rounded-xl border font-bold">تسجيل الخروج</button>
         </div>
-        {currentUser && (
-          <div className="flex items-center gap-6 flex-row-reverse">
-             <button onClick={() => setView(AppView.DASHBOARD)} className="text-slate-500 font-bold">الرئيسية</button>
-             <button onClick={() => setView(AppView.GROUPS)} className="text-slate-500 font-bold">المجموعات</button>
-             <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView(AppView.PROFILE)}>
-                <img src={currentUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.username}`} className="w-8 h-8 rounded-lg shadow-sm" alt="Avatar" />
-                <span className="text-sm font-bold hidden sm:inline">{currentUser.username}</span>
-             </div>
-             <button onClick={handleLogout} className="text-slate-500 hover:text-red-500">خروج</button>
-          </div>
-        )}
-      </nav>
-      <main className="flex-1 p-6 md:p-10">{renderView()}</main>
+      )}
+      <main className="max-w-7xl mx-auto">{renderView()}</main>
     </div>
   );
 };

@@ -1,71 +1,85 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { User, UserRole } from '../types';
+import { getIdToken, listProfiles, upsertProfile } from './services/firebaseClient';
 
 interface AdminPanelProps {
   onBack: () => void;
 }
-
-const LOCAL_USERS_KEY = 'studygenius_users';
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]');
-    const mapped: User[] = stored.map((u: any) => ({
-      id: u.id,
-      username: u.username,
-      role: u.role as UserRole,
-      avatar: u.avatar,
-      isVerified: u.isVerified ?? true,
-      joinedGroups: []
-    }));
-    setUsers(mapped);
-    setLoading(false);
+    const loadProfiles = async () => {
+      try {
+        const profiles = await listProfiles(getIdToken() ?? undefined);
+        setUsers(
+          profiles.map((profile: any) => ({
+            id: profile.id,
+            username: profile.username,
+            role: profile.role as UserRole,
+            avatar: profile.avatar_url ?? undefined,
+            isVerified: Boolean(profile.is_verified),
+            joinedGroups: []
+          }))
+        );
+      } catch {
+        alert('تعذر تحميل المستخدمين.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProfiles();
   }, []);
 
-  const saveUsers = (nextUsers: User[]) => {
-    setUsers(nextUsers);
-    const stored = JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]');
-    const merged = stored.map((u: any) => {
-      const updated = nextUsers.find(n => n.id === u.id);
-      return updated
-        ? { ...u, role: updated.role, isVerified: updated.isVerified, avatar: updated.avatar, username: updated.username }
-        : u;
-    });
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(merged));
+  const patchProfile = async (userId: string, patch: Partial<{ role: UserRole; is_verified: boolean }>) => {
+    try {
+      await upsertProfile(userId, patch, getIdToken() ?? undefined);
+      return true;
+    } catch (error: any) {
+      alert(error?.message || 'تعذر تحديث الحساب.');
+      return false;
+    }
   };
 
-  const toggleRole = (userId: string, currentRole: UserRole) => {
+  const toggleRole = async (userId: string, currentRole: UserRole) => {
     if (currentRole === UserRole.ADMIN) {
       alert('Cannot change Admin role here.');
       return;
     }
+
     const newRole = currentRole === UserRole.TEACHER ? UserRole.USER : UserRole.TEACHER;
-    saveUsers(users.map(u => (u.id === userId ? { ...u, role: newRole } : u)));
+    const ok = await patchProfile(userId, { role: newRole });
+    if (ok) {
+      setUsers((prev) => prev.map((user) => (user.id === userId ? { ...user, role: newRole } : user)));
+    }
   };
 
-  const toggleVerification = (userId: string, currentStatus: boolean) => {
-    saveUsers(users.map(u => (u.id === userId ? { ...u, isVerified: !currentStatus } : u)));
+  const toggleVerification = async (userId: string, currentStatus: boolean) => {
+    const ok = await patchProfile(userId, { is_verified: !currentStatus });
+    if (ok) {
+      setUsers((prev) => prev.map((user) => (user.id === userId ? { ...user, isVerified: !currentStatus } : user)));
+    }
   };
 
-  if (loading) return (
-    <div className="flex items-center justify-center p-20">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
-    </div>
-  );
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-20">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex justify-between items-center">
         <div>
-           <h2 className="text-3xl font-black text-slate-900">Super Admin Panel</h2>
-           <p className="text-slate-500 font-medium">Local demo user management</p>
+          <h2 className="text-3xl font-black text-slate-900">Super Admin Panel</h2>
+          <p className="text-slate-500 font-medium">Firebase profile management</p>
         </div>
-        <button onClick={onBack} className="text-slate-400 font-bold hover:text-red-500 px-4 py-2 hover:bg-red-50 rounded-xl transition-all">
-          Exit Panel
-        </button>
+        <button onClick={onBack} className="text-slate-400 font-bold hover:text-red-500 px-4 py-2 hover:bg-red-50 rounded-xl transition-all">Exit Panel</button>
       </div>
 
       <div className="bg-white rounded-[2rem] shadow-xl overflow-hidden border border-slate-100">
@@ -80,58 +94,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {users.map(user => (
+              {users.map((user) => (
                 <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <img src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} className="w-10 h-10 rounded-full border border-slate-200 bg-white" />
                       <div className="flex flex-col">
-                          <span className="font-bold text-slate-800 text-sm">{user.username}</span>
-                          <span className="text-[10px] text-slate-400 font-mono">{user.id.substring(0,8)}...</span>
+                        <span className="font-bold text-slate-800 text-sm">{user.username}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">{user.id.substring(0, 8)}...</span>
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wide
-                      ${user.role === UserRole.ADMIN ? 'bg-rose-100 text-rose-600' : 
-                        user.role === UserRole.TEACHER ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wide ${user.role === UserRole.ADMIN ? 'bg-rose-100 text-rose-600' : user.role === UserRole.TEACHER ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>
                       {user.role}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
-                    {user.isVerified ? (
-                       <span className="flex items-center gap-1 text-emerald-600 font-bold text-xs">
-                          <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Verified
-                       </span>
-                    ) : (
-                       <span className="flex items-center gap-1 text-slate-400 font-bold text-xs">
-                          <span className="w-2 h-2 bg-slate-300 rounded-full"></span> Unverified
-                       </span>
-                    )}
-                  </td>
+                  <td className="px-6 py-4">{user.isVerified ? <span className="text-emerald-600 text-xs font-bold">Verified</span> : <span className="text-amber-500 text-xs font-bold">Unverified</span>}</td>
                   <td className="px-6 py-4 text-right">
-                    {user.role !== UserRole.ADMIN && (
-                      <div className="flex items-center justify-end gap-2">
-                          <button 
-                            onClick={() => toggleVerification(user.id, user.isVerified)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
-                              ${user.isVerified 
-                                  ? 'border-red-200 text-red-500 hover:bg-red-50' 
-                                  : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50 bg-emerald-50/50'}`}
-                          >
-                            {user.isVerified ? 'Revoke Verify' : 'Verify Account'}
-                          </button>
-
-                          <button 
-                              onClick={() => toggleRole(user.id, user.role)}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all"
-                          >
-                              {user.role === UserRole.TEACHER ? 'Demote to Student' : 'Promote to Teacher'}
-                          </button>
+                    {user.role !== UserRole.ADMIN ? (
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => toggleVerification(user.id, user.isVerified)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${user.isVerified ? 'border-amber-200 text-amber-600 hover:bg-amber-50 bg-amber-50/50' : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50 bg-emerald-50/50'}`}>
+                          {user.isVerified ? 'Revoke Verify' : 'Verify Account'}
+                        </button>
+                        <button onClick={() => toggleRole(user.id, user.role)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">
+                          {user.role === UserRole.TEACHER ? 'Demote to Student' : 'Promote to Teacher'}
+                        </button>
                       </div>
-                    )}
-                    {user.role === UserRole.ADMIN && (
-                        <span className="text-[10px] font-bold text-slate-300 uppercase">System Admin</span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-slate-300 uppercase">System Admin</span>
                     )}
                   </td>
                 </tr>

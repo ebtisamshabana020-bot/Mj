@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { compressImage } from '../utils';
+import { signUpWithPassword, upsertProfile } from './services/firebaseClient';
 
 interface RegisterProps {
   onRegister: (user: User) => void;
   onBack: () => void;
 }
 
-const LOCAL_USERS_KEY = 'studygenius_users';
+const usernameToEmail = (username: string): string => {
+  const normalized = username.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+  return `${normalized}@studygenius.app`;
+};
 
 export const Register: React.FC<RegisterProps> = ({ onRegister, onBack }) => {
   const [username, setUsername] = useState('');
@@ -26,40 +30,45 @@ export const Register: React.FC<RegisterProps> = ({ onRegister, onBack }) => {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password) return;
+    if (!username.trim() || !password) return;
 
-    if (password.length < 3) {
-      setErrorMsg('Password must be at least 3 characters.');
+    if (password.length < 6) {
+      setErrorMsg('Password must be at least 6 characters.');
       return;
     }
 
     setLoading(true);
     setErrorMsg('');
 
-    const users = JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]');
-    const exists = users.find((u: any) => u.username === username);
-    if (exists) {
-      setErrorMsg('Username already exists. Please choose another one.');
+    try {
+      const email = usernameToEmail(username);
+      const auth = await signUpWithPassword(email, password, username.trim());
+      const requestedRole = role === UserRole.ADMIN ? UserRole.USER : role;
+
+      const profile = await upsertProfile(
+        auth.localId,
+        {
+          username: username.trim(),
+          role: requestedRole,
+          is_verified: true,
+          avatar_url: avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(username.trim())}`
+        },
+        auth.idToken
+      );
+
+      onRegister({
+        id: auth.localId,
+        username: profile.username,
+        role: requestedRole,
+        avatar: profile.avatar_url ?? undefined,
+        isVerified: Boolean(profile.is_verified),
+        joinedGroups: []
+      });
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Registration failed.');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const id = `user_${Date.now()}`;
-    const stored = { id, username, password, role, avatar };
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify([stored, ...users]));
-    localStorage.setItem('studygenius_demo_creds', JSON.stringify({ username, password }));
-
-    const newUser: User = {
-      id,
-      username,
-      role,
-      avatar: avatar || undefined,
-      isVerified: true,
-      joinedGroups: []
-    };
-
-    onRegister(newUser);
-    setLoading(false);
   };
 
   return (
@@ -67,18 +76,14 @@ export const Register: React.FC<RegisterProps> = ({ onRegister, onBack }) => {
       <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-100">
         <div className="text-center mb-8">
           <h2 className="text-3xl font-black text-slate-900 tracking-tight">Create Identity</h2>
-          <p className="text-slate-400 mt-2 font-medium">Local registration without backend</p>
+          <p className="text-slate-400 mt-2 font-medium">Server-backed registration via Firebase</p>
         </div>
 
         <form onSubmit={handleSignup} className="space-y-6">
           <div className="flex justify-center mb-6">
             <label className="relative cursor-pointer group">
               <div className="w-20 h-20 bg-slate-100 rounded-3xl overflow-hidden border-2 border-dashed border-slate-300 group-hover:border-indigo-400 transition-colors">
-                {avatar ? (
-                  <img src={avatar} className="w-full h-full object-cover" alt="Avatar" />
-                ) : (
-                  <div className="flex items-center justify-center h-full text-2xl text-slate-400">+</div>
-                )}
+                {avatar ? <img src={avatar} className="w-full h-full object-cover" alt="Avatar" /> : <div className="flex items-center justify-center h-full text-2xl text-slate-400">+</div>}
               </div>
               <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
             </label>
